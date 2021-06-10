@@ -1,0 +1,13 @@
+name: AudaxCalc
+title: AudaxCalc
+username:
+account: smacarthur
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 4242881
+bundleId: 4700553
+url: https://smacarthur.shinyapps.io/AudaxCalc/
+when: 1623320270.18903
+lastSyncTime: 1623320270.18904
+asMultiple: FALSE
+asStatic: FALSE
