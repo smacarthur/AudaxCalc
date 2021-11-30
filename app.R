@@ -3,6 +3,9 @@ library(tidyverse)
 library(magrittr)
 library(plotly)
 library(data.table)
+library(DT)
+library(lubridate)
+library(forecast)
 
 
 # Define UI for application that draws a histogram
@@ -52,7 +55,17 @@ ui <- fluidPage(
            tabPanel("TSS",plotOutput("tss")),
            tabPanel("Total Calories",plotOutput("caloriesTotal")),
            tabPanel("TSS vs Rest",plotlyOutput("tssRest")),
-           tabPanel("Calories", plotOutput("calories")))
+           tabPanel("Calories", plotOutput("calories")),
+           tabPanel("Power Zone Table", verbatimTextOutput("ftpText"), dataTableOutput("zoneTable")),
+           tabPanel("Fitness and Freshness", 
+           fileInput("file1", "Choose CSV File",
+                     multiple = FALSE,
+                     accept = c("text/csv",
+                                "text/comma-separated-values,text/plain",
+                                ".csv")),
+           numericInput("forcast.length", "Forcast Length", value = 30, min = 0, max = 365),
+           numericInput("history.length", "Plot last X days", value = 180, min = 7),
+           plotOutput("freshness")))
         )
     )
 )
@@ -264,6 +277,116 @@ if (input$preset == "LEL 2022"){
             scale_colour_manual(values = c("red", "black")) + 
             facet_wrap(~`Break Per Hour (minutes)`)
     })
+    
+    output$ftpText <- renderText(str_c("FTP of ",input$ftp, ". Endurance pace is around ",(mean(c(0.56,0.75)*input$ftp) %>% round(0))))
+    
+    output$zoneTable <- renderDataTable({
+        zone.name <- c(
+            "Z1 Active Recovery",
+            "Z2  Endurance",
+            "Z3  Tempo",
+            "Z4 Threshold",
+            "Z5 VO2 max",
+            "Z6 Anaerobic capacity",
+            "Z7 Neuromuscular Power",
+            "Sweet Spot")
+        
+        zone.lower <- c(   0, 0.56, 0.76, 0.91, 1.06, 1.21, 1.50, 0.88)
+        zone.upper <- c(0.55, 0.75, 0.90, 1.05, 1.20, 1.50, Inf, 0.95)
+        
+        resultsTable <- data.table(
+            Zone = zone.name,
+            Range = str_c(zone.lower %>% multiply_by(100), "-", zone.upper %>% multiply_by(100)),
+            `Min Power` = input$ftp %>% multiply_by(zone.lower) %>% round(1),
+            `Max Power` = input$ftp %>% multiply_by(zone.upper) %>% round(1))
+        resultsTable[,`Mid Power`:=((`Min Power` + `Max Power`)/2) %>% round(0)]
+        resultsTable %>% data.frame
+    })
+    
+    output$freshness <- renderPlot({
+        req(input$file1)
+        activities <- fread(file = input$file1$datapath, header = TRUE)
+        
+        plotFormAndFitness <- function(activities, forcast.length = 30, history.length = 180) {
+            tmp <- data.table(
+                date = as.Date(activities$Date), 
+                stress = activities$`Power Stress Score` %>% as.numeric(),
+                name=activities$Name)
+            
+            tmp <- merge(tmp,data.table(date=seq(from=min(tmp$date),to=today()+forcast.length,by = "1 day")), all.y = TRUE)
+            tmp[stress %>% is.na,stress:= 0]
+            
+            
+            calculateForm <- function(tmp){
+                fitness <- rep(0,nrow(tmp))
+                form <- rep(0,nrow(tmp))
+                fatigue <- rep(0,nrow(tmp))
+                stress <- tmp$stress
+                
+                for (idx in 2:nrow(tmp)){
+                    fitness[idx] <- fitness[idx-1] + (stress[idx] - fitness[idx-1]) * (1- exp(-1/42))
+                    fatigue[idx] <- fatigue[idx-1] + (stress[idx] - fatigue[idx-1]) * (1- exp(-1/7))
+                    form[idx] <- fitness[idx-1] - fatigue[idx-1]
+                }
+                tmp$form    <- form
+                tmp$fitness <- fitness
+                tmp$fatigue <- fatigue
+                return(tmp)
+            }
+            tmp <- calculateForm(tmp)
+            tmp$timeFilter <- lubridate::today() %>% subtract(tmp$date) %>% is_less_than(history.length)
+            tmp[,inFuture:=date>today()]
+            
+            rects <- data.frame(
+                xmin=rep(min(tmp[(timeFilter),date]),3),
+                xmax=rep(max(tmp[(timeFilter),date]),3),
+                ymin=c(-30,-10,5),
+                ymax=c(-10,5,24),
+                fill = c("green","orange","blue"),
+                stringsAsFactors=FALSE)
+            max.form.date <- tmp[(inFuture),] %>% .[form == max(form),date] %>% subtract(today())
+            p1 <- rects %>% ggplot() +
+                geom_rect(data = rects, aes(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax, fill = fill), alpha = 0.25) +
+                geom_line(data = tmp %>% 
+                              filter(timeFilter),
+                          aes(x = date, y = form, linetype = inFuture)) +
+                theme(legend.position = "none") +
+                ggtitle(paste("Maximum form in",max.form.date,"days"))
+            max.fitness <- tmp[(timeFilter),max(fitness)]
+            todays.fitness <- tmp[date==today(),max(fitness)]
+            fit.diff <- todays.fitness %>% subtract(max.fitness) %>% round(2)
+            forcast.arima <- cbind(
+                data.table(
+                    date = seq(from = today()+1, to = today()+forcast.length, by = "1 day"),
+                    auto.arima(tmp[(timeFilter)&!(inFuture),fitness]) %>% 
+                        forecast(h = forcast.length, level = 0.95) %>% as.data.table))
+            p2 <- tmp %>% 
+                filter(timeFilter) %>% 
+                ggplot(aes(x = date, y = fitness)) + 
+                geom_line(aes(linetype = inFuture), col = "blue") +
+                geom_hline(aes(yintercept = max.fitness), linetype = "dotted") +
+                geom_hline(aes(yintercept = todays.fitness), linetype = "dotted") +
+                theme(legend.position = "none") + 
+                geom_smooth(data=tmp[(timeFilter) & !(inFuture),], alpha = 0.25, fullrange = TRUE ) +
+                geom_line(data = forcast.arima, aes(y = `Point Forecast`), col = "blue") +
+                geom_ribbon(data = forcast.arima, 
+                            aes(x = date, 
+                                y = `Point Forecast`, 
+                                ymin = `Lo 95`, 
+                                ymax = `Hi 95`), linetype=2, alpha = 0.1) +
+                ggtitle(paste("Fitness is", fit.diff, "points from maximum in last", history.length, "days"))
+            p3 <- tmp %>% 
+                filter(timeFilter) %>% 
+                ggplot(aes(x = date, y = fatigue)) + 
+                geom_line(aes(linetype = inFuture), col = "red") +
+                theme(legend.position = "none")
+            gridExtra::grid.arrange(p1,p2,p3)
+        }
+        
+        plotFormAndFitness(activities, forcast.length = input$forcast.length, history.length = input$history.length)
+        
+    }
+    )
     
     
 }

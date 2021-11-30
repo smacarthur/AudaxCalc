@@ -1,19 +1,24 @@
 ## Cycling Day Planner
+library(tidyverse)
+library(data.table)
+library(magrittr)
 
-total.time <- 125
-resting.percent <- 0.1
-break.every.x.hours <- 3
+distance.km <- 200
+total.time <- 10
+resting.percent <- 0.2
+break.every.x.hours <- 2
 hours.sleep.per.day <- 3
 
-
-number.of.sleeps <- (total.time/24)-1
+ 
+number.of.sleeps <- ifelse(total.time>=24,(total.time/24)-1, 0)
 total.sleep.time <- number.of.sleeps * hours.sleep.per.day
 
 resting.time <- (total.time * resting.percent) - total.sleep.time
 cycling.time <- total.time - resting.time - total.sleep.time
+speed.kph <- distance.km/cycling.time
 
 
-number.of.breaks <- (total.time / break.every.x.hours)-2 ## Minus two as one break is at the end and no break at start
+number.of.breaks <- floor((total.time / break.every.x.hours)-2) ## Minus two as one break is at the end and no break at start
 length.of.breaks <- resting.time / number.of.breaks
 
 cycling.stints <- number.of.breaks+1
@@ -50,8 +55,8 @@ x %>%
   theme(axis.ticks.y = element_blank()) +
   xlab(NULL) +
   ggtitle(str_c(
-    "Cycling = ",cycling.stints, " stints of ", length.of.stint %>% round(2), " hours  = ", total.cycling, " hours total\n",
-    "Break = ", number.of.breaks, " breaks of ", length.of.breaks %>% round(2), " hours = ", total.break %>% round(2)," hours break\n",
-    "Sleep = ", number.of.sleeps, " sleeps of ", hours.sleep.per.day, " hours = ", total.sleep %>% round(2), " hours sleep"))
+    "Cycling = ",cycling.stints %>% round(2), " stints of ", length.of.stint %>% round(2), " hours  = ", total.cycling %>% round(2), " hours total @", speed.kph,"kph\n",
+    "Break = ", number.of.breaks %>% round(2), " breaks of ", length.of.breaks %>% multiply_by(60) %>% round(2), " minutes = ", total.break %>% round(2)," hours break\n",
+    "Sleep = ", number.of.sleeps %>% round(2), " sleeps of ", hours.sleep.per.day, " hours = ", total.sleep %>% round(2), " hours sleep"))
   
 
