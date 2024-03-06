@@ -1,0 +1,507 @@
+---
+title: "LEL 2022 Analysis"
+format: html
+execute:
+  echo: false
+  warning: false
+editor: visual
+---
+
+```{r loadLibraries}
+#processLEL2022Data 
+
+## DESCRIPTION : This is a report on the data from the 2022 LEL with a view to helping model and suggest speed
+##               and stop durations
+
+library(data.table)
+library(tidyverse)
+library(magrittr)
+library(lubridate)
+library(scales)
+library(here)
+library(mixtools)
+library(fitdistrplus)
+library(logspline)
+library(MASS)
+library(mixR)
+library(glue)
+library(cowplot)
+```
+
+```{r}
+## Functions
+to_date <- . %>%  parse_date_time(., "dmY HM")
+km_to_m <- . %>% divide_by(1.609)
+
+makeItLong <- function(x){
+y <- x %>% pivot_longer( cols = c(contains("bound"),"Start_1","DebdenFinish_21","Dunfermline_10")) %>% data.table
+y[name %>% str_detect("Dunfermline"), direction:= "H"]
+y[name %>% str_detect("Start|North"), direction:= "N"]
+y[name %>% str_detect("Finish|South"), direction:="S"]
+y[, control    := name %>% str_split("_") %>% map(~.[1]) %>% unlist]
+y[, controlIDX := name %>% str_split("_") %>% map(~.[2]) %>% unlist %>% as.integer()]
+y <- merge(y, ctrls, by.x="controlIDX", by.y="idx")
+setkey(y, controlIDX)
+y[, timeFromLast := c(NA,value %>% diff %>% as.numeric(.,"hours")),by = rider]
+y[, avgSpeedFromArrivalAtLast := distFromLast/timeFromLast]
+y[, runningTime               := interval(.SD[controlIDX==1,value], value) %>% as.duration() %>% as.numeric(.,"hours"),by = rider]
+y[, runningAvgSpeed           := distance/runningTime]
+y[, leg1Speed                 := avgSpeedFromArrivalAtLast[controlIDX==2], by = rider]
+y <- y[rider %in% y[timeFromLast==0,rider] %>% not,]
+y$name <- factor(y$name, levels = y[,.(name, controlIDX)] %>% unique %>% .[order(controlIDX),name])
+y[,name:=factor(name, levels = y[,.(name,controlIDX)] %>% unique %>% .[order(controlIDX),name])]
+ctrl.lookup <- y[,.(controlIDX, control, Control)] %>% unique
+ctrl.lookup$legName <- str_c(ctrl.lookup$Control[match(ctrl.lookup$controlIDX-1,ctrl.lookup$controlIDX)], "->", ctrl.lookup$Control)
+y$legName <- factor(ctrl.lookup$legName[match(y$controlIDX,ctrl.lookup$controlIDX)], levels = ctrl.lookup$legName)
+return(y)
+}
+
+
+```
+
+```{r}
+ctrls <- fread(here("LEL2022_Analysis/2022Controls"), sep = ",")
+ctrls[, distance := distance %>% str_remove(" km") %>% as.numeric()]
+ctrls[, idx:=1:.N]
+ctrls[, distFromLast:=c(0,distance %>% diff)]
+ctrls[, Control:=Control %>% str_to_title]
+total_distance_km <- ctrls[,distance[.N]]
+```
+
+Loaded `r nrow(ctrls)` controls over `r prettyNum(total_distance_km, big.mark = ",")`km. Control distances loaded from https://ridewithgps.com/routes/38803752
+
+```{r}
+## Load and Process Raw Data
+## Read in file and use "NULL" to be NA - Meaning no data
+#x <- fread(here("LEL2022_Analysis/2022 rider tracking data.csv"), na.strings = "NULL")
+x <- fread(here("LEL2022_Analysis/2022 rider tracking data CLEAN abc123.csv"), na.strings = "NULL")
+timeAllowedRegular <- 128+(20/60) 
+```
+
+Loaded data from `r nrow(x)` rider's data before filtering
+
+```{r}
+## QC And Filtering
+x <- x[`StartLocation`=="Debden",] ## Only keep Debden Starters
+x[, `StartLocation`:=NULL] ## Only keeping the debden starts
+x <- x[!is.na(Start),] ## Only keep people with start times
+#x <- x[, lapply(.SD, lubridate::to_date)] ## Convert all columns to date time
+x <- x[Start %>% date %>% equals("2022-08-07"),] ## Filter out start dates on the wrong day
+x %<>% set_colnames(str_c(names(x),"_",1:ncol(x)))
+
+## Remove Riders with missing data - Only keep ones with sucess or fail based on rle of NAs
+idx <- x %>% is.na %>% apply(.,1, function(a) a %>% as.logical %>% rle %>% lengths %>% .[1]) %>% is_weakly_less_than(2)
+x <- x[idx,]
+
+## Calculate the time from the start to the 
+totalTime <- x[, apply(x,1, function(a) interval(a[1],max(a, na.rm = TRUE)) %>% as.duration %>% as.numeric(.,"hours"))]
+
+## Number of the last control, should be 21 for success and <21 for fails
+lastCtrl <- x[, x %>% is.na %>% apply(.,1, function(a) a %>% as.logical %>% rle %>% .$lengths %>% .[1])]
+
+x[, rider:=1:.N]
+x[, totalTime:=totalTime]
+x[, lastCtrl:=lastCtrl]
+
+```
+
+Inital plot of time arrival at each control.
+
+```{r}
+y <- makeItLong(x)
+y %>% 
+  filter(!is.na(legName)) %>% 
+  ggplot(aes(x = legName, y = value)) +
+  geom_point(alpha = 0.2) +
+  geom_line(aes(group = rider), alpha = 0.02) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  ylab("Time") +
+  xlab("Control") +
+  theme(text = element_text(size=20))
+```
+
+The sample plot but showing time from start
+
+```{r}
+y %>% 
+  ggplot(aes(x = name, y = runningTime)) +
+  geom_point(alpha = 0.2) +
+  geom_line(aes(group = rider), alpha = 0.02) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  geom_hline(yintercept = timeAllowedRegular) +
+  ylab("Time (hours)") +
+  xlab("Control") +
+  theme(text = element_text(size=20))
+```
+
+Same data, but plotting the distance on the X axis. We can now add a green slope showing the minimum speed. Points above the line are behind time and points below have time in hand. The pink line shows the maximum speed, no one was in danger is hitting that by the end.
+
+```{r}
+y %>% 
+  ggplot(aes(x = distance, y = runningTime)) +
+  geom_hline(yintercept = timeAllowedRegular) +
+  geom_vline(xintercept = total_distance_km) +
+  geom_abline(slope = 1/(total_distance_km/(timeAllowedRegular)), col = "lightgreen", linewidth = 3) +
+  geom_abline(slope = 1/(30), col = "pink", linewidth = 3) +
+  geom_point(alpha = 0.2) +
+  geom_line(aes(group = rider), alpha = 0.02) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  ylab("Time (hours)") +
+  xlab("Distance (km)") +
+  theme(text = element_text(size=20))
+```
+
+```{r}
+## Hack should not be needed. Probably a bug
+x[, BostonNorthbound_3 := BostonNorthbound_3  - hours(1)]
+x[, LouthSouthbound_17:= LouthSouthbound_17 - hours(1)]
+
+x <- x[totalTime>0, ]
+```
+
+`r nrow(x)` riders after filtering for incomplete data and anomolous start and finish times
+
+```{r}
+x[, fastGroup        := Start_1 %>% hour %>% equals(5)] 
+x[, timeAllowed      := c(timeAllowedRegular, 100)[fastGroup %>% as.numeric() %>% add(1)]]
+x[, finished         := !is.na(DebdenFinish_21)]
+x[, finishedInTime   := DebdenFinish_21<=Start_1+duration(timeAllowed, "hours")]
+x[, success := finished & finishedInTime]
+
+## Remove people who didn't make it to the first control
+x <- x[lastCtrl>1, ]
+
+## Distance of last ctrl reached
+x[, maxDistance:=ctrls$distance[match(x$lastCtrl, ctrls$idx)]]
+x[, averageSpeed_kph := maxDistance/totalTime]
+
+```
+
+This shows the overall average speed of riders, the vertical line is the minumum speed to complete the distance in the allowed time. Not showing the fast group. The green vertical is the minimum speed of `r round(total_distance_km/timeAllowedRegular,2)`kpm and the pink is the maximum of 30kph
+
+```{r}
+x %>% 
+  filter(!fastGroup) %>% 
+  ggplot(aes(x = round(averageSpeed_kph, 1))) +
+    geom_vline(xintercept = total_distance_km/(x[!(fastGroup),timeAllowed] %>% unique), col = "lightgreen", linewidth = 3)  +
+  geom_vline(xintercept = 30, col = "pink", linewidth  = 3 )+
+  geom_histogram(aes(fill = success), alpha = 0.5, position = "identity", binwidth = 0.25) +
+  theme(text = element_text(size=20)) +
+  xlab("Average Speed (kph)") +
+  ylab("Number of Riders")
+```
+
+```{r}
+## Remove riders with strange leg speeds >50kph ~ 30mph
+x <- x[rider %in% (y[avgSpeedFromArrivalAtLast>50,rider] %>% unique) %>% not,]
+
+y <- makeItLong(x)
+
+y %>% 
+  ggplot(aes(x = legName, y = avgSpeedFromArrivalAtLast)) +
+  geom_point(alpha = 0.2, aes(col = success)) +
+  geom_line(aes(group = rider, col = success), alpha = 0.2) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  ylab("Speed (kph)") +
+  xlab("Control") +
+  theme(text = element_text(size=20))
+
+```
+
+```{r}
+x[,.(`Success Rate`=(sum(success)/.N) %>% multiply_by(100) %>% round(1) %>% str_c(.,"%"),Riders=.N),by = fastGroup] %>% knitr::kable()
+
+```
+
+Both fast and regular groups have very similar success rate of around `r str_c(round((sum(x$success)/nrow(x))*100,1),"%")`
+
+For simplicity we rill remove the fast group from further analysis, leaving `r x[(success) & !(fastGroup),.N]` riders.
+
+```{r}
+x <- x[!(fastGroup),]
+```
+
+The mean finish time of successful riders is `r x[(success), totalTime] %>% mean %>% round(1)` hours
+
+```{r}
+x %>% 
+  ggplot(aes(x = totalTime)) +
+  geom_vline(xintercept = timeAllowedRegular, col = "lightgreen", linewidth = 3) +
+  geom_histogram(aes(fill = success), position = "identity", alpha = 0.75, binwidth = 1) +
+  xlab("Total Time") + 
+  ylab("Number of Riders") +
+  theme(text = element_text(size=20))
+```
+
+```{r}
+y <- makeItLong(x)
+
+## Remove riders where they have an unrealistic speed of any leg >50kph
+y <- y[rider %in% (y[avgSpeedFromArrivalAtLast>50,rider] %>% unique()) %>% not,]
+```
+
+This plot shows the number of people who didn't finish sucessfully who's last entry is at each control. You can see that a lot of people didn't make it to Brampton after getting to Barnard Castle.
+
+```{r}
+failed.last.ctrl <- y[!(success),.(N = rider %>% uniqueN),by = .(lastCtrl)]
+failed.last.ctrl <- merge(failed.last.ctrl, y[,.(controlIDX, legName)], by.x = "lastCtrl", by.y = "controlIDX") %>% unique
+
+failed.last.ctrl%>% 
+  ggplot(aes(x = legName, y = N)) +
+  geom_bar(stat = "identity") + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  theme(text = element_text(size=15)) +
+  ylab("Number of Riders") + xlab("Last Control Reached")
+```
+
+This is the cumulative sum of riders who stopped after each control.
+
+```{r}
+tmp <- failed.last.ctrl
+tmp[,percent:=cumsum(N)/sum(N)]
+
+tmp %>% 
+  ggplot(aes(x = legName, y = percent)) +
+  geom_point() +
+  geom_line(aes(group = 1)) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  theme(text = element_text(size=15)) +
+  scale_y_continuous(label = percent) +
+  theme(text = element_text(size=20)) + 
+  xlab("Last Control Reached") +
+  ylab("Percent of Rider")
+```
+
+Around 50% of riders who don't complete or not in time have stopped around `r tmp[which.min(abs(0.5-percent)), legName]`
+
+The data set only informs us of when riders arrived at a control, not when they left. The first leg from `r y[controlIDX==2, legName] %>% unique` is the only leg without any stops, so it is the only section which is only cycling. We can see that although the distributions overlap, people with a higher average speed are more likely to complete the ride successfully.
+
+```{r}
+y[controlIDX==2,] %>% 
+  ggplot(aes(x= avgSpeedFromArrivalAtLast)) +
+  geom_histogram(aes(fill = success), position = "identity", alpha = 0.75) +
+  xlab(str_c("Average Speed from ",y[controlIDX==2,legName] %>% unique %>% as.character())) +
+#  geom_density(aes(fill = success), alpha = 0.75) +
+  ylab("Number of Riders") +
+  theme(text = element_text(size=20)) 
+```
+
+We can re-plot this to show the percent of riders that complete within time.
+
+```{r}
+y[controlIDX==2, .(
+  success = sum(success), 
+  riders = .N, 
+  fracSuccess = sum(success)/.N), 
+  by = cut_interval(avgSpeedFromArrivalAtLast,length = 2)] %>% 
+  ggplot(aes(x = cut_interval, y= fracSuccess)) +
+  geom_point(aes(size = riders)) +
+  geom_line(aes(group = 1)) +
+  theme(text = element_text(size=20)) +
+  xlab(str_c("Average Speed ", y[controlIDX==2,legName] %>% unique %>% as.character())) +
+  ylab("Percent of Riders Successful") +
+  theme(axis.text.x = element_text(angle = 90)) +
+  scale_y_continuous(label = percent)
+```
+
+If we look at the fist few controls we can see that we see roughly normally distributed speeds until the Louth to Hessle, suggesting that very few people people stopped for a sleep until Louth, as expected.
+
+```{r}
+y[controlIDX %in% c(2:5)] %>% 
+  filter(legName %>% is.na() %>% not) %>% 
+  ggplot(aes(x= avgSpeedFromArrivalAtLast)) +
+  geom_histogram(aes(fill = success), position = "identity", alpha = 0.75) +
+  xlab("Average Speed") +
+  ylab("Number of Riders") +
+  theme(text = element_text(size=20))  +
+  facet_wrap(~legName, scale = "free")
+```
+
+So the speed from Debden to St Ives is just cycling time, but from St Ives to Spalding also includes the stopped time at St Ives. If we assume the same average cycling speed we can estimate the time stopped at St Ives.
+
+We can see that on average people who succeed had shorter stops than those that didn't.
+
+```{r}
+firstLegSpeed <- y[controlIDX ==2,][order(rider), avgSpeedFromArrivalAtLast]
+estimatedStopTime <- y[controlIDX ==3,][order(rider), timeFromLast-(distFromLast/firstLegSpeed)]
+
+data.table(y[controlIDX ==3,][order(rider),.(rider, success)], estimatedStopTime) %>% 
+  ggplot(aes(x = estimatedStopTime)) +
+  geom_histogram(aes(fill = success), position = "identity", alpha = 0.75) +
+  theme(text = element_text(size=20)) +
+  ylab("Number of Riders") + 
+  xlab("Estimated Stop Time at St Ives (Hours)")
+```
+
+```{r}
+y[controlIDX %in% c(5)] %>% 
+  filter(legName %>% is.na() %>% not) %>% 
+  ggplot(aes(x= timeFromLast)) +
+  geom_histogram(aes(fill = success), position = "identity", alpha = 0.75) +
+  xlab("Time etween Controls") +
+  ylab("Number of Riders") +
+  theme(text = element_text(size=20))  +
+  facet_wrap(~legName, scale = "free")
+```
+
+Then on the Louth to Hessle leg we can now see a bimodal distribution of people who slept or at least had a long rest at Louth. The larger peak shows most people didn't sleep at Louth and just had a short rest and carried on to Hessle.
+
+```{r}
+y %>% 
+  filter(!is.na(legName)) %>% 
+  ggplot(aes(x = distance, y = avgSpeedFromArrivalAtLast)) +
+  geom_line(aes(col = success, group = rider), alpha = 0.05) +
+  theme(axis.text.x=element_text(angle = 90)) +
+  theme(text = element_text(size=20))
+```
+
+```{r}
+fit <- y %>% 
+  filter(success) %>% 
+  loess(avgSpeedFromArrivalAtLast~distance, data = .)
+
+y %>% 
+  filter(success) %>% 
+  ggplot(aes(x = distance, y = avgSpeedFromArrivalAtLast)) +
+  geom_point() +
+  geom_smooth(method = "loess")
+
+y[controlIDX>1,.(rider, controlIDX,distance,  avgSpeedFromArrivalAtLast/leg1Speed)] %>% 
+  ggplot(aes(x = distance, y = V4)) +
+  geom_point() +
+  geom_line(aes(group = rider), alpha = 0.02)
+
+```
+
+```{r}
+stopOrSleep <- function(full.data = y, leg){
+#  idx <- full.data[,!is.na(legName) &  !(fastGroup) & as.character(legName) == leg & !is.na(timeFromLast)] %>% which
+    idx <- full.data[,!is.na(legName) & (success) & !(fastGroup) & as.character(legName) == leg] %>% which
+
+  time.from.last <<- full.data[idx, timeFromLast] %>% as.numeric()
+  s_normal <<-  mixR::select(x=time.from.last, ncomp = 1:2, family = "normal")
+  s_normal <<- data.table(
+      ncomp     = s_normal$ncomp,
+      equal.var = s_normal$equal.var, 
+      bic       = s_normal$bic, 
+      bic_round = s_normal$bic %>% round(-2)) %>% 
+    .[order(bic_round, ncomp, equal.var),]
+
+  results <- data.table(rider      = full.data[idx, rider],
+           legName      = leg,
+           ncomp = s_normal$ncomp[1],
+           ev = as.logical(s_normal$equal.var[1] == "Y")
+  )
+  message(s_normal$ncomp[1])
+  message(s_normal$equal.var[1])
+  if (s_normal$ncomp[1]!=1){
+  mx <- mixR::mixfit(x= time.from.last, ncomp = s_normal$ncomp[1], ev =  as.logical(s_normal$equal.var[1] == "Y"), family = "normal")$comp.prob %>% set_colnames(c("Stop","Sleep"))
+  results[,stopType:=colnames(mx)[max.col(mx,ties.method="first")]]
+  } else {
+  results[,stopType:="Stop"]
+}
+return(results)
+}
+
+y <- makeItLong(x)
+r <- lapply(y$legName %>% levels, function(leg) stopOrSleep(y, leg)) %>% rbindlist()
+#r <- y$legName %>% levels %>% map(~ stopOrSleep(y,.x)) %>% bind_rows()
+r[,legName:=factor(legName, levels = levels(y$legName))]
+
+y <- merge(y, r, by.x = c("legName", "rider"), by.y = c("legName","rider"), all = TRUE)
+```
+
+```{r}
+r$legName <- factor(r$legName, levels = y$legName %>% levels)
+
+r %>% 
+  ggplot(aes(x = legName)) +
+  geom_bar(aes(fill = stopType)) +
+  theme(axis.text.x=element_text(angle = 90)) +
+  theme(text = element_text(size=20)) +
+  ggtitle("Fraction of people Stopping or Sleeping")
+```
+
+```{r}
+r <- merge(r, y[,.(rider, legName,timeFromLast, success)], by = c("rider", "legName"))
+r %>% 
+  ggplot(aes(x = legName, y = timeFromLast)) +
+  geom_boxplot(aes(fill = success), alpha = 0.5) +
+  theme(axis.text.x=element_text(angle = 90)) +
+  theme(text = element_text(size=20))   +
+  facet_wrap(~stopType, scales = "free_y")
+
+```
+
+```{r}
+r[stopType=="Sleep",.(numSleeps = .N),, by = .(rider)] %>% 
+  ggplot(aes(x = numSleeps)) +
+  geom_histogram() +
+  theme(text = element_text(size=20)) +
+  xlab("Number of Sleeps")
+```
+
+```{r}
+y <- merge(y, y[controlIDX == 3, .(firstStopTime=timeFromLast-(distFromLast/leg1Speed)), by = rider], by = "rider")
+y %>% 
+  ggplot(aes(x = firstStopTime)) +
+  geom_density(aes(fill = success), alpha = 0.5)
+```
+
+```{r}
+y <- merge(y, y[controlIDX == 4, .(secondStopTime=timeFromLast-(distFromLast/leg1Speed)), by = rider], by = "rider")
+y %>% 
+  ggplot(aes(x = secondStopTime)) +
+  geom_density(aes(fill = success), alpha = 0.5)
+```
+
+```{r}
+y <- merge(y,y[,.(rider, firstStopTime, secondStopTime)] %>% unique %>% 
+  .[,.(avgStopTime=mean(c(firstStopTime, secondStopTime))), by = rider])
+
+y %>% 
+  ggplot(aes(x = avgStopTime)) +
+  geom_density(aes(fill = success), alpha = 0.5)  
+
+```
+
+Average stopping time split by people who finished in time and those two didn't.
+
+```{r}
+y <- merge(y, y[stopType=="Sleep",.(firstSleep=min(controlIDX)), by = rider], by = "rider")
+
+tmp <- y[,.(controlIDX, legName)] %>% unique
+y$firstSleepCtrl <- tmp$legName[match(y$firstSleep, tmp$controlIDX)]
+y$firstSleepCtrl <- factor(y$firstSleepCtrl, levels = y$legName %>% levels)
+
+y %>% 
+  .[,.(firstSleepCtrl, rider, success)] %>% 
+  unique %>% 
+  ggplot(aes(x = firstSleepCtrl)) +
+  geom_bar(aes(fill = success)) +
+  theme(axis.text.x=element_text(angle = 90)) +
+  theme(text = element_text(size=20)) 
+
+```
+
+```{r}
+y[controlIDX>2,
+  c("rideTime", "stopTime") := list(
+    distFromLast/leg1Speed, 
+    timeFromLast-(distFromLast/leg1Speed)), by = .(controlIDX, rider)]
+
+y %>% 
+  .[controlIDX>1,.(totalStop=sum(stopTime, na.rm = TRUE)),by = .(rider,stopType)] %>% 
+  ggplot(aes(x = totalStop)) +
+  geom_histogram(aes(fill= stopType), position = "identity", alpha = 0.5) +
+  theme(text = element_text(size=20)) +
+  ylab("Number of Riders")
+
+```
+
+```{r}
+y[controlIDX>1,.(totalStops = sum(stopTime, na.rm = TRUE), numStops = .N), by = .(rider, stopType)] %>%
+  .[,avgTimePerRest := totalStops/numStops] %>% 
+  ggplot(aes(x = avgTimePerRest, y = numStops)) +
+  geom_point(aes(col = stopType))
+```

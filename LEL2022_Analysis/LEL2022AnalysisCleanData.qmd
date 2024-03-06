@@ -1,0 +1,129 @@
+---
+title: "LEL 2022 Analysis"
+format: html
+execute:
+  echo: false
+  warning: false
+editor: visual
+---
+
+```{r loadLibraries}
+#processLEL2022Data
+library(data.table)
+library(tidyverse)
+library(magrittr)
+library(lubridate)
+library(scales)
+library(here)
+library(mixtools)
+library(fitdistrplus)
+library(logspline)
+library(MASS)
+library(mixR)
+library(glue)
+library(cowplot)
+```
+
+```{r}
+## Functions
+to_date <- . %>%  parse_date_time(., "dmY HM")
+km_to_m <- . %>% divide_by(1.609)
+
+makeItLong <- function(x){
+y <- x %>% pivot_longer( cols = c(contains("bound"),"Start_1","DebdenFinish_21","Dunfermline_10")) %>% data.table
+y[name %>% str_detect("Dunfermline"), direction:= "H"]
+y[name %>% str_detect("Start|North"), direction:= "N"]
+y[name %>% str_detect("Finish|South"), direction:="S"]
+y[, control    := name %>% str_split("_") %>% map(~.[1]) %>% unlist]
+y[, controlIDX := name %>% str_split("_") %>% map(~.[2]) %>% unlist %>% as.integer()]
+y <- merge(y, ctrls, by.x="controlIDX", by.y="idx")
+setkey(y, controlIDX)
+y[, timeFromLast := c(NA,value %>% diff %>% as.numeric(.,"hours")),by = rider]
+y[, avgSpeedFromArrivalAtLast := distFromLast/timeFromLast]
+y[, runningTime               := interval(.SD[controlIDX==1,value], value) %>% as.duration() %>% as.numeric(.,"hours"),by = rider]
+y[, runningAvgSpeed           := distance/runningTime]
+y[, leg1Speed                 := avgSpeedFromArrivalAtLast[controlIDX==2], by = rider]
+y <- y[rider %in% y[timeFromLast==0,rider] %>% not,]
+y$name <- factor(y$name, levels = y[,.(name, controlIDX)] %>% unique %>% .[order(controlIDX),name])
+y[,name:=factor(name, levels = y[,.(name,controlIDX)] %>% unique %>% .[order(controlIDX),name])]
+ctrl.lookup <- y[,.(controlIDX, control, Control)] %>% unique
+ctrl.lookup$legName <- str_c(ctrl.lookup$Control[match(ctrl.lookup$controlIDX-1,ctrl.lookup$controlIDX)], "->", ctrl.lookup$Control)
+y$legName <- factor(ctrl.lookup$legName[match(y$controlIDX,ctrl.lookup$controlIDX)], levels = ctrl.lookup$legName)
+return(y)
+}
+
+
+```
+
+```{r}
+ctrls <- fread(here("LEL2022_Analysis/2022Controls"), sep = ",")
+ctrls[, distance := distance %>% str_remove(" km") %>% as.numeric()]
+ctrls[, idx:=1:.N]
+ctrls[, distFromLast:=c(0,distance %>% diff)]
+ctrls[, Control:=Control %>% str_to_title]
+total_distance_km <- ctrls[,distance[.N]]
+```
+
+Loaded `r nrow(ctrls)` controls over `r prettyNum(total_distance_km, big.mark = ",")`km. Control distances loaded from https://ridewithgps.com/routes/38803752
+
+```{r}
+## Load and Process Raw Data
+## Read in file and use "NULL" to be NA - Meaning no data
+#x <- fread(here("LEL2022_Analysis/2022 rider tracking data.csv"), na.strings = "NULL")
+timeAllowedRegular <- 128+(20/60) 
+
+
+x <- fread(here("LEL2022_Analysis/lel_summary_data.csv"))
+x[,time:=ifelse(is.na(est_arrive_time), arrive_time, est_arrive_time) %>% lubridate::as_datetime()]
+x[,`Guild Hall Start`:=(long_name == "Guild Hall Start")  %>% any(),by = rider_id]
+x[,`Start Location`:=c("Debden","Guildhall")[as.numeric(`Guild Hall Start`)+1]]
+
+original <- fread(here("LEL2022_Analysis/2022 rider tracking data.csv"), na.strings = "NULL")
+setnames(original, new = names(original) %>% str_remove_all(" "))
+
+
+new <- x[,.(rider_id, `Start Location`, long_name, time)] %>% pivot_wider(names_from = long_name, values_from = time) %>% data.table
+new[,Start:=ifelse(is.na(`Debden Start`), `Guild Hall Start`, `Debden Start`) %>% lubridate::as_datetime()]
+setnames(new, new = names(new) %>% str_remove_all(" "))
+new <- new[,names(original), with = FALSE]
+
+fwrite(new, file = here("LEL2022_Analysis/2022 rider tracking data CLEAN abc123.csv"))
+```
+
+Using data provided by abc123 from yacf.
+
+Loaded data from `x$rider_id %>% uniqueN` rider's data before filtering
+
+```{r}
+## Exploring Data
+x <- x[long_name %>% str_detect("Guild Hall") %>% not, ] ## Remove Guild Hall Start
+x <- x[rider_status!="DNS",] ## Remove Did not starts
+x[,start_control_id:=NULL] ## Not needed
+x[control_id==2, .(rider_id, time)]
+x[,control_idx:=control_id-1]
+x <- merge(x, x[control_idx==1, .(rider_id, start_time=time)], by = "rider_id")
+x[,elapsedTime:=interval(start_time, time) %>% as.duration() %>% as.numeric(., "hours")]
+
+x[,fastGroup:=start_time==lubridate::as_datetime("2022-08-07 05:00:00 UTC")]
+x <- x[!(fastGroup),] ## Remove Fast Group
+x[,fastGroup:=NULL]
+
+x <- merge(x, ctrls[,.(distance, idx, distFromLast)], by.x = "control_idx", by.y = "idx")
+
+x <- merge(x, x[,.(success = rider_status == "FINISHED" & max(elapsedTime)<=timeAllowedRegular),by = .(rider_id)] %>% unique, by = "rider_id")
+
+x %>% 
+  ggplot(aes(x = distance, y = time)) +
+  geom_point() +
+  geom_line(alpha = 0.2, aes(group = rider_id, col = success))
+
+x %>% 
+  ggplot(aes(x = distance, y = elapsedTime)) +
+  geom_point() +
+  geom_line(alpha = 0.2, aes(group = rider_id, col = success))
+
+x[,timeScinceLast:=c(NA,diff(elapsedTime)),by = rider_id]
+
+
+
+```

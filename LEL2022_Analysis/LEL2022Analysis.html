@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.475">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>LEL 2022 Analysis</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="LEL2022Analysis_files/libs/clipboard/clipboard.min.js"></script>
+<script src="LEL2022Analysis_files/libs/quarto-html/quarto.js"></script>
+<script src="LEL2022Analysis_files/libs/quarto-html/popper.min.js"></script>
+<script src="LEL2022Analysis_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="LEL2022Analysis_files/libs/quarto-html/anchor.min.js"></script>
+<link href="LEL2022Analysis_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="LEL2022Analysis_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="LEL2022Analysis_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="LEL2022Analysis_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="LEL2022Analysis_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body class="fullcontent">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">LEL 2022 Analysis</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<div class="cell">
+
+</div>
+<div class="cell">
+
+</div>
+<div class="cell">
+
+</div>
+<p>Loaded 21 controls over 1,522.3km. Control distances loaded from https://ridewithgps.com/routes/38803752</p>
+<div class="cell">
+
+</div>
+<p>Loaded data from 1511 rider’s data before filtering</p>
+<div class="cell">
+
+</div>
+<p>Inital plot of time arrival at each control.</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-5-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>The sample plot but showing time from start</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>Same data, but plotting the distance on the X axis. We can now add a green slope showing the minimum speed. Points above the line are behind time and points below have time in hand. The pink line shows the maximum speed, no one was in danger is hitting that by the end.</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+
+</div>
+<p>1309 riders after filtering for incomplete data and anomolous start and finish times</p>
+<div class="cell">
+
+</div>
+<p>This shows the overall average speed of riders, the vertical line is the minumum speed to complete the distance in the allowed time. Not showing the fast group. The green vertical is the minimum speed of 11.86kpm and the pink is the maximum of 30kph</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-10-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-11-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<table class="table table-sm table-striped">
+<thead>
+<tr class="header">
+<th style="text-align: left;">fastGroup</th>
+<th style="text-align: left;">Success Rate</th>
+<th style="text-align: right;">Riders</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">TRUE</td>
+<td style="text-align: left;">62.7%</td>
+<td style="text-align: right;">59</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">FALSE</td>
+<td style="text-align: left;">59%</td>
+<td style="text-align: right;">1247</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>Both fast and regular groups have very similar success rate of around 59.2%</p>
+<p>For simplicity we rill remove the fast group from further analysis, leaving 736 riders.</p>
+<div class="cell">
+
+</div>
+<p>The mean finish time of successful riders is 118.5 hours</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-14-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+
+</div>
+<p>This plot shows the number of people who didn’t finish sucessfully who’s last entry is at each control. You can see that a lot of people didn’t make it to Brampton after getting to Barnard Castle.</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-16-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>This is the cumulative sum of riders who stopped after each control.</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-17-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>Around 50% of riders who don’t complete or not in time have stopped around Barnard Castle-&gt;Brampton</p>
+<p>The data set only informs us of when riders arrived at a control, not when they left. The first leg from Debden-&gt;St Ives is the only leg without any stops, so it is the only section which is only cycling. We can see that although the distributions overlap, people with a higher average speed are more likely to complete the ride successfully.</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-18-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>We can re-plot this to show the percent of riders that complete within time.</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-19-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>If we look at the fist few controls we can see that we see roughly normally distributed speeds until the Louth to Hessle, suggesting that very few people people stopped for a sleep until Louth, as expected.</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-20-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>So the speed from Debden to St Ives is just cycling time, but from St Ives to Spalding also includes the stopped time at St Ives. If we assume the same average cycling speed we can estimate the time stopped at St Ives.</p>
+<p>We can see that on average people who succeed had shorter stops than those that didn’t.</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-21-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-22-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>Then on the Louth to Hessle leg we can now see a bimodal distribution of people who slept or at least had a long rest at Louth. The larger peak shows most people didn’t sleep at Louth and just had a short rest and carried on to Hessle.</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-23-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-24-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-24-2.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-26-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-27-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-28-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-29-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-30-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-31-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>Average stopping time split by people who finished in time and those two didn’t.</p>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-32-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-33-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<p><img src="LEL2022Analysis_files/figure-html/unnamed-chunk-34-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>

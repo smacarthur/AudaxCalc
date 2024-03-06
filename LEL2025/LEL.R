@@ -3,7 +3,7 @@ library(magrittr)
 library(tidyverse)
 library(lubridate)
 library(ggrepel)
-
+library(here)
 ## DESCRIPTION : This became the LEL_Planning APP - Old Code
 
 ## User Parameters
@@ -32,7 +32,7 @@ target_moving_speed_kph
 
 
 ## Table Generation
-ctrls                    <- fread("LEL_2025_Ctrls.csv")
+ctrls                    <- fread(file.path(here::here(), "referenceFiles","LEL_2025_Ctrls.csv"))
 ctrls[,START:=str_c(START,"_",ID)]
 ctrls$legDistance        <- c(diff(ctrls$Distance), 0)
 ctrls$END                <- c(ctrls$START[2:nrow(ctrls)], NA)
@@ -93,13 +93,9 @@ ctrls[, cumulativeTotalTime := cumulativeOnBikeDuration + cumulativeControlTime]
 ctrls[, arrivalTime:=(start_time+duration(cumulativeTotalTime-controlTime, "hours"))]
 ctrls[, departureTime:=(start_time+duration(cumulativeTotalTime, "hours"))]
 ctrls
-fwrite(ctrls, file = "timings.csv")
+fwrite(ctrls, file = file.path(here::here(),"LEL_2025_timings.csv"))
 
 ctrls[,mainControl:=ID %>% str_detect("^C")]
-
-ctrls %>% 
-  ggplot(aes(x = 1: maximum_time_hours, y = 1:total_distance_km)) +
-  geom_hline(yintercept = )
 
 suntimes <- list(
   sunrise = lapply(0:(cyclingUnits-1), function(d) 

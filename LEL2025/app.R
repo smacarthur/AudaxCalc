@@ -7,6 +7,8 @@ library(ggrepel)
 library(shinydashboard)
 library(DT)
 
+### DESCRIPTION - This is is designed to plan where to sleep on LEL2025.
+
 ## User Parameters
 
 # Define UI for application that draws a histogram
